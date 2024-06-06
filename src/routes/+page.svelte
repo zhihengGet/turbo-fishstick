@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { createTurboQuery } from 'turbo-query';
-	import { createQuery } from './handler.svelte';
-	import { text } from '@sveltejs/kit';
+	import { createQuery, type normalized } from './handler.svelte';
 	import Test from './test.svelte';
 	import DevTool from './DevTool.svelte';
+	import { pickBy } from 'remeda';
 	// Create the configuration object.
 	const options = {
 		// Example isomorphic fetcher, requires node 17.5+.
@@ -55,7 +55,7 @@
 	const query = createQuery({
 		cacheKey: 'blogs',
 		deps: () => args.a,
-		fetcher: async () => {
+		fetcher: async (props) => {
 			console.log('calling fetcher');
 			const res = await fetch('https://jsonplaceholder.typicode.com/todos/1');
 			let { promise, resolve, reject } = Promise.withResolvers();
@@ -63,15 +63,34 @@
 				resolve([1]);
 			}, 500);
 			await promise;
-			return [1, 2, 3, 'fetch', crypto.randomUUID()] as const;
+			return [{ id: crypto.randomUUID(), content: '' }] as const;
 		},
-		mergeFn: ({ Cached, originalResponse }) => {
-			return originalResponse;
+		mergeFn: ({
+			Cached,
+			originalResponse
+		}): normalized<string, [{ id: string; content: string }]> => {
+			const ids = originalResponse.map((v) => v.id);
+			if (!Cached) {
+				return {
+					value: originalResponse.reduce((prev, next, index) => {
+						prev[next.id] = next;
+						return prev;
+					}, {})
+				} as normalized<string,[123]>;
+			}
+			const item = Cached.item.value;
+			 originalResponse.map((v) => {
+				item[v.id] = Object.assign(item[v.id] ?? {}, v); // merge
+			}) 
+			return Cached.item as normalized<string,[123]>
 		},
 		pickFn: ({ Cached, originalResponse }) => {
-			return originalResponse;
+			const ids=originalResponse.map(v=>v.id)
+			const item = Cached.item;
+			const v= ids.map(v=>item.value[v])
+			return v
 		},
-		queryOptions: { expiration: () => 10000 }
+		queryOptions: { expiration: () => 50000 }
 	});
 
 	$effect(() => {
@@ -97,9 +116,9 @@
 </script>
 
 <h2>turbo query</h2>
-<prev>
+<pre>
 	{JSON.stringify(query(), null, 2)}
-</prev>
+</pre>
 
 <button
 	onclick={() => {

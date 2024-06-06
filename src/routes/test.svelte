@@ -1,46 +1,56 @@
 <script lang="ts">
-	import { createTurboQuery } from 'turbo-query';
-	import { createQuery } from './handler.svelte.js';
-	import { text } from '@sveltejs/kit';
+	import { createQuery, type normalized } from './handler.svelte';
 	const args = $state({ a: 1 });
 	const query = createQuery({
 		cacheKey: 'blogs',
 		deps: () => args.a,
-		fetcher: async () => {
-			console.log('creating query  ttest');
-			/* const update = await fetch('https://jsonplaceholder.typicode.com/posts/1', {
-				method: 'PUT',
-				body: JSON.stringify({
-					id: 1,
-					title: 'foo',
-					body: 'bar',
-					userId: 1
-				}),
-				headers: {
-					'Content-type': 'application/json; charset=UTF-8'
-				}
-			}); */
+		fetcher: async (props) => {
+			console.log('calling fetcher');
 			const res = await fetch('https://jsonplaceholder.typicode.com/todos/1');
-			return [1, 2, 3, 'fetch', crypto.randomUUID()];
+			let { promise, resolve, reject } = Promise.withResolvers();
+			setTimeout(() => {
+				resolve([1]);
+			}, 500);
+			await promise;
+			return [{ id: crypto.randomUUID(), content: '' }] as const;
 		},
-		mergeFn: ({ Cached, originalResponse }) => {
-			return originalResponse;
+		mergeFn: ({
+			Cached,
+			originalResponse
+		}): normalized<string, [{ id: string; content: string }]> => {
+			const ids = originalResponse.map((v) => v.id);
+			if (!Cached) {
+				return {
+					value: originalResponse.reduce((prev, next, index) => {
+						prev[next.id] = next;
+						return prev;
+					}, {})
+				} as normalized<string,[123]>;
+			}
+			const item = Cached.item.value;
+			 originalResponse.map((v) => {
+				item[v.id] = Object.assign(item[v.id] ?? {}, v); // merge
+			}) 
+			return Cached.item as normalized<string,[123]>
 		},
-		pickFn: ({ Cached, originalResponse }) => {
-			return originalResponse;
+		pickFn: ({ Cached, originalResponse }) => {		
+			console.log("pickFn",originalResponse)
+			const ids=originalResponse.map(v=>v.id)
+			const item = Cached.item;
+			const v= ids.map(v=>item.value[v])
+	
+			return v
 		},
-
-		queryOptions: { expiration: () => 1000 }
+		queryOptions: { expiration: () => 500 }
 	});
-
 	// Get the resolver keys.
 	let open = $state(false);
 </script>
 
 <h2>Test</h2>
-<prev>
+<pre>
 	{JSON.stringify(query(), null, 2)}
-</prev>
+</pre>
 
 <button
 	onclick={() => {
