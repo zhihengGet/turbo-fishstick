@@ -31,11 +31,12 @@
 		}
 	});
 
-	
 	const args = $state({ a: 1 });
 	const query = createQuery({
 		cacheKey: 'blogs',
-		deps: () => { const b={...args}; return b},
+		deps: () => {
+			return args;
+		},
 		fetcher: async (props) => {
 			console.log('calling fetcher');
 			const res = await fetch('https://jsonplaceholder.typicode.com/todos/1');
@@ -44,7 +45,7 @@
 				resolve([1]);
 			}, 500);
 			await promise;
-			return [{ id: crypto.randomUUID(), content: '',type:props }] as const;
+			return [{ id: crypto.randomUUID(), content: '', type: props }] as const;
 		},
 		mergeFn: ({
 			Cached,
@@ -57,22 +58,23 @@
 						prev[next.id] = next;
 						return prev;
 					}, {})
-				} as normalized<string,[123]>;
+				} as normalized<string, [123]>;
 			}
 			const item = Cached.item.value;
-			 originalResponse.map((v) => {
+			originalResponse.map((v) => {
 				item[v.id] = Object.assign(item[v.id] ?? {}, v); // merge
-			}) 
-			return Cached.item as normalized<string,[123]>
+			});
+			return Cached.item as normalized<string, [123]>;
 		},
 		pickFn: ({ Cached, originalResponse }) => {
-			console.log("calling page pickFn",originalResponse)
-			const ids=originalResponse.map(v=>v.id)
+			console.log('calling page pickFn', originalResponse);
+			const ids = originalResponse.map((v) => v.id);
 			const item = Cached.item;
-			const v= ids.map(v=>item.value[v])
-			return v
+			const v = ids.map((v) => item.value[v]);
+			return v;
 		},
-		queryOptions: { expiration: () => 50000 }
+		queryOptions: { expiration: () => 50000 },
+		initialData: [{ id: crypto.randomUUID(), content: '', type: null }]
 	});
 
 	$effect(() => {
@@ -98,7 +100,7 @@
 </script>
 
 <h2>turbo query</h2>
-
+<button onclick={() => query().refetch()}>fetch</button>
 {#if query().isLoading}
 	<span>waiting...</span>
 {/if}

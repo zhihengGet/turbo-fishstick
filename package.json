@@ -1,6 +1,6 @@
 {
 	"name": "svelte-query-custom",
-	"version": "0.0.1-beta.3",
+	"version": "0.0.1-beta.3.3",
 	"private": false,
 	"scripts": {
 		"dev": "vite dev",
