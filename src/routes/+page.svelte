@@ -74,7 +74,7 @@
 			return v;
 		},
 		queryOptions: { expiration: () => 50000 },
-		initialData: [{ id: crypto.randomUUID(), content: '', type: null }]
+		initialData: [{ id: 123213, content: '', type: null }]
 	});
 
 	$effect(() => {

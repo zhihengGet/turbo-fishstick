@@ -9,6 +9,7 @@ import {
 } from 'turbo-query';
 import stringify from 'fast-json-stable-stringify';
 import { merge, pickBy, prop } from 'remeda';
+import { browser } from '$app/environment';
 function log() {}
 
 /**
@@ -81,7 +82,7 @@ export type normalized<key, value> = {
 	 */
 	value: object | Map<id, value>;
 };
-export function createQuery<TData, TError, TDeps, TMerged, TFinal>(props: {
+export function createQuery<TData, TError extends Error, TDeps, TMerged, TFinal>(props: {
 	fetcher: (args: TDeps, abort: AbortSignal) => Promise<TData>;
 	cacheKey: string;
 	name?: string;
@@ -115,14 +116,14 @@ export function createQuery<TData, TError, TDeps, TMerged, TFinal>(props: {
 	 * @description sometime the data you want is already in the cache, try search cache(mergeFn will be called on the fake response) then update response with actual fetch
 	 * @returns {TData}
 	 */
-	optimisticReturn?: (args: { Cached: { expiresAt: Date; item: TMerged } }) => TData;
+	optimisticReturn?: (args: { Cached?: { expiresAt: Date; item: TMerged } }) => TData;
 	pickFn: (args: {
-		Cached: { expiresAt: Date; item: TMerged };
+		Cached?: { expiresAt: Date; item: TMerged };
 		originalResponse: TData;
 		ids: (string | number)[];
 	}) => TFinal;
 	onSuccess?: (data: {
-		picked: TFinal;
+		picked: unknown;
 		originalResponse: TData;
 		cache?: { expiresAt: Date; item: TMerged };
 	}) => void;
@@ -142,6 +143,24 @@ export function createQuery<TData, TError, TDeps, TMerged, TFinal>(props: {
 
 	let ids: string[] = [];
 	let hash: string = $derived(stringify(props.deps()));
+
+	async function notify() {
+		if (browser) {
+			console.log('notifying other tab about the change', sessionStorage?.getItem('tabId'));
+			const channel = new BroadcastChannel('query-app-data');
+			const msg: {
+				tabId: string;
+				cacheItem: { cacheKey: string; cacheFactoryItem: any };
+			} = {
+				tabId: sessionStorage?.getItem('tabId'),
+				cacheItem: {
+					cacheKey: props.cacheKey,
+					cacheFactoryItem: $state.snapshot(cacheFactory.get(props.cacheKey))
+				}
+			};
+			channel.postMessage(msg);
+		}
+	}
 	const queryInstance = createTurboQuery({
 		itemsCache: {
 			get(key) {
@@ -180,7 +199,7 @@ export function createQuery<TData, TError, TDeps, TMerged, TFinal>(props: {
 				const cache = cacheFactory.get(key);
 				const copied = JSON.parse(JSON.stringify(value.item));
 				const prev_original = originalResponse.get(stringify(props.deps()));
-				console.log('Setting cache', originalResponse, stringify(props.deps()));
+				console.log('Setting cache', copied, stringify(props.deps()));
 				originalResponse.set(stringify(props.deps()), copied); // create a copy so that when cache is changed, originalResponse wont change
 				console.time('Set cache');
 
@@ -196,6 +215,7 @@ export function createQuery<TData, TError, TDeps, TMerged, TFinal>(props: {
 					merge(cache.item, temp);
 					cacheFactory.set(key, cache);
 				}
+				notify();
 				console.timeEnd('Set cache');
 			},
 			keys() {
@@ -220,13 +240,16 @@ export function createQuery<TData, TError, TDeps, TMerged, TFinal>(props: {
 	}
 	if (props.initialData) {
 		queryInstance.caches().items.set(props.cacheKey, {
-			expiresAt: new Date(Date.now() + (props?.queryOptions?.expiration?.(props.initialData) ?? 0)),
+			expiresAt: new Date(
+				Date.now() + (props?.queryOptions?.expiration?.(props.initialData) ?? 500)
+			),
 			item: props.initialData
 		});
 		let k = stringify(props.deps());
 		//	originalResponse.set(k, props.initialData);
 		//depsHistory.add(k);
 	}
+
 	let result: {
 		data: TFinal | undefined;
 		isError: boolean;
@@ -255,9 +278,11 @@ export function createQuery<TData, TError, TDeps, TMerged, TFinal>(props: {
 	});
 	const optimisticReturn = props?.optimisticReturn?.({ Cached: cacheFactory.get(props.cacheKey) });
 	if (optimisticReturn) {
+		console.log('optimistic return');
 		result.data = props.pickFn({
 			Cached: cacheFactory.get(props.cacheKey),
-			originalResponse: optimisticReturn
+			originalResponse: optimisticReturn,
+			ids: ids
 		});
 	}
 	async function get(force: boolean = false) {
@@ -294,13 +319,14 @@ export function createQuery<TData, TError, TDeps, TMerged, TFinal>(props: {
 				}
 				result.isLoading = true;
 				result.isSuccess = false;
-				get(!has);
+				get(/* !has */);
 			});
 		}
 	});
 	$effect.root(() => {
 		const unsub: Function[] = [];
 		unsub.push(
+			//@ts-expect-error
 			queryInstance.subscribe(props.cacheKey, 'resolved', function (payload: CustomEvent) {
 				result['isError'] = false;
 				console.log('resolved query', payload.detail, originalResponse.keys());
@@ -329,6 +355,7 @@ export function createQuery<TData, TError, TDeps, TMerged, TFinal>(props: {
 		unsub.push(
 			queryInstance.subscribe(props.cacheKey, 'aborted', function (payload: CustomEvent) {
 				result.isAborted = true;
+				result.isLoading = false;
 				//	result.data = payload;
 			})
 		);
@@ -359,7 +386,7 @@ export function createQuery<TData, TError, TDeps, TMerged, TFinal>(props: {
 			queryInstance.abort();
 			unsub.forEach((v) => v());
 
-			const meta = instanceQueriesMetaStore.get(props.cacheKey) ?? { count: [] };
+			const meta = instanceQueriesMetaStore.get(props.cacheKey) ?? { count: [0], names: new Set() };
 			meta.count.push(-1);
 			instanceQueriesMetaStore.set(props.cacheKey, meta);
 		};
@@ -375,4 +402,36 @@ export function createQuery<TData, TError, TDeps, TMerged, TFinal>(props: {
 
 	//$inspect('inspecting', res).with(console.log);
 	return () => result;
+}
+
+export function MergeService() {
+	onMount(() => {
+		const channel = new BroadcastChannel('query-app-data');
+		const props = getQueryContext();
+		const id = sessionStorage.getItem('tabId') as string;
+		const tabId = id ? id : crypto.randomUUID();
+		sessionStorage.setItem('tabId', tabId);
+		channel.addEventListener(
+			'message',
+			(
+				event: MessageEvent<{
+					tabId: string;
+					cacheItem: { cacheKey: string; cacheFactoryItem: any };
+				}>
+			) => {
+				console.log('sync event', event.data);
+				if (event.data.tabId !== tabId) {
+					console.log('tabs are different');
+					const curr = props.cacheFactory.get(event.data.cacheItem.cacheKey);
+					const curr_res = props.originalResponseStore.get(event.data.cacheItem.cacheKey);
+					props.cacheFactory.set(
+						event.data.cacheItem.cacheKey,
+						merge(curr, event.data.cacheItem.cacheFactoryItem)
+					);
+					//props.originalResponseStore.set(event.data.cacheItem.cacheKey,merge(event.data))
+					// merge with our cache
+				}
+			}
+		);
+	});
 }

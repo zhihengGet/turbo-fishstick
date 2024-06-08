@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { onDestroy, type Snippet } from 'svelte';
+	import { onDestroy, onMount, type Snippet } from 'svelte';
 	import {
+		MergeService,
 		setQueryCacheContext,
 		setQueryContext,
 		setQueryDepsStoreContext,
@@ -14,6 +15,7 @@
 	setQueryDepsStoreContext();
 	setQueryContext();
 	onDestroy(() => {});
+	MergeService();
 </script>
 
 {@render children?.()}

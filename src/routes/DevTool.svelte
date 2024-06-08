@@ -48,9 +48,10 @@
 			BigJsonViewerDom.fromData(JSON.stringify(cacheFactory.get(x)?.item), {}).then((viewer) => {
 				const node = viewer.getRootElement();
 				const html = document.getElementById(getId(x));
-				if (!html) {
+				if (!html || !node) {
 					return console.warn('devtool error failed to get html element');
 				}
+				html.innerHTML = '';
 				html.appendChild(node);
 				node.openAll(1);
 			});
@@ -62,7 +63,6 @@
 <div class:devtool-turbo={open} class:dev-back-to-corner={!open} use:init>
 	<button onclick={() => (open = !open)} style="font-size: 1em;">DevTools(click to fold)</button>
 	<button onclick={() => {}}>toggle json viewer</button>
-
 	{#each cacheFactory.keys() as cache, index}
 		<h2>
 			{index}. Instances
@@ -82,7 +82,7 @@
 		<div style="max-height: 200px; overflow:auto;">
 			<div id={getId(cache)}></div>
 			<div class="jid">
-				{@html generate_HTML(c?.item, {
+				{@html generate_HTML(c?.item ?? {}, {
 					escape_HTML: false,
 					show_newline_chars: false
 				})}
