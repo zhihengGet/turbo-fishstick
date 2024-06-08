@@ -111,6 +111,11 @@ export function createQuery<TData, TError, TDeps, TMerged, TFinal>(props: {
 		 */
 		prevResponse?: TData;
 	}) => TMerged;
+	/**
+	 * @description sometime the data you want is already in the cache, try search cache(mergeFn will be called on the fake response) then update response with actual fetch
+	 * @returns {TData}
+	 */
+	optimisticReturn?: (args: { Cached: { expiresAt: Date; item: TMerged } }) => TData;
 	pickFn: (args: {
 		Cached: { expiresAt: Date; item: TMerged };
 		originalResponse: TData;
@@ -202,7 +207,6 @@ export function createQuery<TData, TError, TDeps, TMerged, TFinal>(props: {
 			}
 		}
 	});
-
 	let temp_orig = originalResponseStore.get(props.cacheKey);
 	let originalResponse = temp_orig ?? new Map();
 	if (!temp_orig) originalResponseStore.set(props.cacheKey, originalResponse);
@@ -249,7 +253,13 @@ export function createQuery<TData, TError, TDeps, TMerged, TFinal>(props: {
 		},
 		cacheInstance: () => cacheFactory.get(props.cacheKey)
 	});
-
+	const optimisticReturn = props?.optimisticReturn?.({ Cached: cacheFactory.get(props.cacheKey) });
+	if (optimisticReturn) {
+		result.data = props.pickFn({
+			Cached: cacheFactory.get(props.cacheKey),
+			originalResponse: optimisticReturn
+		});
+	}
 	async function get(force: boolean = false) {
 		const result = await queryInstance?.query<TData>(props.cacheKey, {
 			//@ts-expect-error idk
