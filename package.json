@@ -1,12 +1,12 @@
 {
 	"name": "svelte-query-custom",
-	"version": "0.0.1",
+	"version": "0.0.1-beta.3",
 	"private": false,
 	"scripts": {
 		"dev": "vite dev",
 		"build": "vite build && npm run package",
 		"preview": "vite preview",
-		"package": "svelte-kit sync && svelte-package && publint",
+		"package": "svelte-kit sync && svelte-package -i src ",
 		"prepublishOnly": "npm run package",
 		"test": "npm run test:integration && npm run test:unit",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
@@ -18,14 +18,24 @@
 	},
 	"exports": {
 		".": {
-			"types": "./dist/index.d.ts",
-			"svelte": "./dist/index.js"
+			"types": "./dist/routes/index.d.ts",
+			"svelte": "./dist/routes/index.js",
+			"default": "./dist/routes/index.js"
+		},
+		"./*": {
+			"svelte": "./dist/routes/*",
+			"default": "./dist/routes/*"
+		},
+		"./src/*": {
+			"svelte": "./dist/*",
+			"default": "./dist/routes/*"
 		}
 	},
 	"files": [
 		"dist",
 		"!dist/**/*.test.*",
-		"!dist/**/*.spec.*"
+		"!dist/**/*.spec.*",
+		"src"
 	],
 	"peerDependencies": {
 		"svelte": "^5.0.0-next.150"

@@ -1,4 +1,4 @@
-import { getContext, onMount, setContext, untrack } from 'svelte';
+import { getContext, onMount, setContext, tick, untrack } from 'svelte';
 import { Map as ReactiveMap } from 'svelte/reactivity';
 import {
 	createTurboQuery,
@@ -21,7 +21,7 @@ const DepsFactory: { [s in string]: Set<unknown> } = {};
 /**
  * @description store global cache for a cache key, reactive map so that all UI can be updated
  */
-const globalCacheFactory: Map<string, { expiresAt: Date; item: T }> = new Map();
+const globalCacheFactory: Map<string, { expiresAt: Date; item: unknown }> = new Map();
 
 type cache<T> = { expiresAt: Date; item: T };
 const QUERY_CLIENT_TURBO = 'turbo query context';
@@ -33,19 +33,22 @@ export const setQueryContext = () => {
 	return setContext(QUERY_CLIENT_TURBO, {
 		cacheFactory: new ReactiveMap(),
 		depsFactory: {},
-		instanceFactory: new Map(),
-		instanceQueries: new Map(),
-		originalResponseStore:new Map(),
-		endHook: (v) => console.log('query ended')
+		//instanceFactory: new Map(),
+		//instanceQueries: new Map(),
+		originalResponseStore: new Map(),
+		endHook: () => console.log('query ended'),
+		instanceQueriesMetaStore: new Map()
 	});
 };
-export const getQueryContext = <TMerged, Deps>() => {
+export const getQueryContext = <TMerged, Deps, TData, TDeps>() => {
 	return getContext(QUERY_CLIENT_TURBO) as {
-		cacheFactory: Map<string, TMerged>;
-		depsFactory: { [s in string]: Set<Deps> };
-		instanceFactory: typeof instanceFactory;
-		instanceQueries: Map<TurboQuery, unknown>;
-		endHook: (props: { error?: Error; data?: unknown }) => void;
+		cacheFactory: Map<string, { expiresAt: Date; item: TMerged }>;
+		depsFactory: { [s in string]: Set<string> };
+		//instanceFactory: Map<string, TurboQuery>;
+		//	instanceQueries: Map<TurboQuery, [typeof props]>;
+		instanceQueriesMetaStore: Map<string, { count: number[] }>;
+		endHook: (props: { error?: Error; data?: TData }) => void;
+		originalResponseStore: Map<string, Map<TDeps, TData>>;
 	};
 };
 export const setQueryInstanceContext = () => {
@@ -79,6 +82,7 @@ export type normalized<key, value> = {
 export function createQuery<TData, TError, TDeps, TMerged, TFinal>(props: {
 	fetcher: (args: TDeps, abort: AbortSignal) => Promise<TData>;
 	cacheKey: string;
+	name?: string;
 	deps: () => TDeps;
 	/**
 	 *
@@ -86,16 +90,15 @@ export function createQuery<TData, TError, TDeps, TMerged, TFinal>(props: {
 	 * @description  get unique id from the response, which can be used later to pick item from cache
 	 * @returns
 	 */
-	pickId?: (data: TData) => (string | number)[];
+	getUniqueIds?: (data: TData) => (string | number)[];
 	normalizer?: () => {};
 	/**
 	 *
 	 * @description returned merged result will replace current cached item
-	 * @param 
+	 * @param
 	 * @returns
 	 */
 	mergeFn: (args: {
-
 		Cached?: { expiresAt: Date; item: TMerged };
 		/**
 		 * @description sometime the original response is expired, so we need to fetch new response
@@ -104,7 +107,7 @@ export function createQuery<TData, TError, TDeps, TMerged, TFinal>(props: {
 		/**
 		 * @description sometime the original response is expired, so we need to fetch new response, prevResponse is the expired response
 		 */
-		prevResponse: TData
+		prevResponse: TData;
 	}) => TMerged;
 	pickFn: (args: {
 		Cached: { expiresAt: Date; item: TMerged };
@@ -122,92 +125,91 @@ export function createQuery<TData, TError, TDeps, TMerged, TFinal>(props: {
 	/* 	const cacheFactory = getQueryCacheContext();
 	const depsFactory = getQueryDepsStoreContext();
 	const instanceFactory = getQueryInstanceContext(); */
-	const { cacheFactory, depsFactory, instanceFactory, instanceQueries, endHook,originalResponseStore } =
-		getQueryContext() as {
-			cacheFactory: Map<string, { expiresAt: Date; item: TMerged }>;
-			depsFactory: { [s in string]: Set<string> };
-			instanceFactory: Map<string, TurboQuery>;
-			instanceQueries: Map<TurboQuery, [typeof props]>;
-			endHook: (props: { error?: Error; data?: TData }) => void;
-			originalResponseStore: Map<TurboQuery,Map<TDeps,TData>>
-		};
+	const { cacheFactory, depsFactory, instanceQueriesMetaStore, endHook, originalResponseStore } =
+		getQueryContext<TMerged, TDeps, TData, TDeps>();
 	if (!depsFactory[props.cacheKey]) {
 		depsFactory[props.cacheKey] = new Set();
 	}
 	let depsHistory = depsFactory[props.cacheKey];
-	let instance = instanceFactory.get(props.cacheKey);
+
 	let ids: string[] = [];
-	if (!instance) {
-		instance = createTurboQuery({
-			itemsCache: {
-				get(key) {
-					const old_cache = cacheFactory.get(key);
-					console.info('get', key, JSON.stringify(old_cache));
-					if (!old_cache) {
-						return;
-					}
-					console.log(new Date("2500/1/1").getTime()-Date.now())
-					if(old_cache.expiresAt.getTime()<=Date.now()){
-						console.log("Get Item from cached But expired")
-					}
-					
-					console.log("GET ORG","CALLING PICKFN", originalResponse.get(props.deps()),props.pickFn({
-						Cached: old_cache,
-						originalResponse: originalResponse.get(props.deps()),
-						ids: ids
-					}))
-					console.log("ready to pickfn")
-					result.data=props.pickFn({
-						Cached: old_cache,
-						originalResponse: originalResponse.get(props.deps()),
-						ids: ids
-					})		
-					console.log("callled")
-					return old_cache
-				},
-				set(key, value) {
-					const cache = cacheFactory.get(key);
-					const copied=JSON.parse(JSON.stringify(value.item))
-					const prev_original= originalResponse.get(props.deps())
-					originalResponse.set(props.deps(),copied) // create a copy so that when cache is changed, originalResponse wont change
-					console.log('Set cache', originalResponse,prev_original, cache);
-
-
-					const temp = props.mergeFn({ Cached: cache, originalResponse: copied,prevOriginal:prev_original });
-					if (!cache?.item) {
-						let reactive_output = $state({ expiresAt: value.expiresAt, item: temp });
-						cacheFactory.set(key, reactive_output);
-					} else {
-						merge(cache.item, temp);
-						cacheFactory.set(key, cache);
-					}
-					console.log('Value to be set ', temp);
-				},
-				keys() {
-					return cacheFactory.keys();
-				},
-				delete(key) {
-					//console.log('delete ', key);
-					return cacheFactory.delete(key);
+	let hash: string = '';
+	const queryInstance = createTurboQuery({
+		itemsCache: {
+			get(key) {
+				const old_cache = cacheFactory.get(key);
+				console.info('Get, check if item exists in cache', key);
+				if (!old_cache) {
+					return;
 				}
-			}
-		});
-		instanceFactory.set(props.cacheKey, instance);
-	}
-	if (!instance) {
-		return console.error('Failed to create turbo query instance !');
-	}
-	let originalResponse = originalResponseStore.get(instance) ?? new Map() // update as deps updates
-	if(!originalResponse){
-		originalResponse=new Map()
-		originalResponseStore.set(instance,originalResponse)
-	}
-	const COUNT = 'counterQuery';
+				if (old_cache.expiresAt.getTime() <= Date.now()) {
+					console.log('Get Item from cached But expired');
+				}
+				const original = originalResponse.get(stringify(props.deps()));
+				console.log(
+					'GET originalResponse',
+					Array.from(originalResponse),
+					originalResponse.get(stringify(props.deps()))
+				);
 
-	if (!instanceQueries.has(instance)) {
-		instanceQueries.set(instance, [props]);
+				if (!original) {
+					// missing original response, need to refetch
+					console.log('missing original response, refetching...');
+					return;
+				}
+				result.data = props.pickFn({
+					Cached: old_cache,
+					originalResponse: original,
+					ids: props?.getUniqueIds?.(original) ?? []
+				});
+				console.log('GET originalResponse', JSON.stringify(result.data));
+				clearTimeout(timer);
+				result.isLoading = false;
+				return old_cache;
+			},
+			set(key, value) {
+				const cache = cacheFactory.get(key);
+				const copied = JSON.parse(JSON.stringify(value.item));
+				const prev_original = originalResponse.get(stringify(props.deps()));
+				console.log('Setting cache', originalResponse, stringify(props.deps()));
+				originalResponse.set(stringify(props.deps()), copied); // create a copy so that when cache is changed, originalResponse wont change
+				console.time('Set cache');
+
+				const temp = props.mergeFn({
+					Cached: cache,
+					originalResponse: copied,
+					prevResponse: prev_original
+				});
+				if (!cache?.item) {
+					let reactive_output = $state({ expiresAt: value.expiresAt, item: temp });
+					cacheFactory.set(key, reactive_output);
+				} else {
+					merge(cache.item, temp);
+					cacheFactory.set(key, cache);
+				}
+				console.timeEnd('Set cache');
+			},
+			keys() {
+				return cacheFactory.keys();
+			},
+			delete(key) {
+				//console.log('delete ', key);
+				return cacheFactory.delete(key);
+			}
+		}
+	});
+
+	let temp_orig = originalResponseStore.get(props.cacheKey);
+	let originalResponse = temp_orig ?? new Map();
+	if (!temp_orig) originalResponseStore.set(props.cacheKey, originalResponse);
+	// increment count
+	const meta = instanceQueriesMetaStore.get(props.cacheKey) ?? { count: [] };
+	meta.count.push(1);
+	instanceQueriesMetaStore.set(props.cacheKey, meta);
+
+	function getResponseHistory() {
+		return originalResponse.get(stringify(props.deps()));
 	}
-	//instance[COUNT] = instance[COUNT] ? instance[COUNT] + 1 : 1;
 
 	let result: {
 		data: TFinal | undefined;
@@ -225,11 +227,11 @@ export function createQuery<TData, TError, TDeps, TMerged, TFinal>(props: {
 		isAborted: false,
 		isRefetching: false,
 		data: undefined,
-		queryInstance: instance,
+		queryInstance: queryInstance,
 		isLoading: false,
 		isSuccess: false,
 		isError: false,
-		instance: instance,
+		instance: queryInstance,
 		refetch: () => {
 			return get(true);
 		},
@@ -237,7 +239,8 @@ export function createQuery<TData, TError, TDeps, TMerged, TFinal>(props: {
 	});
 
 	async function get(force: boolean = false) {
-		const result= instance?.query<TData>(props.cacheKey, {
+		const result = await queryInstance?.query<TData>(props.cacheKey, {
+			//@ts-expect-error idk
 			fetcher: async (key, { signal }) => {
 				const res = await props.fetcher(props.deps(), signal);
 				if (timer) {
@@ -246,22 +249,23 @@ export function createQuery<TData, TError, TDeps, TMerged, TFinal>(props: {
 				}
 				return res;
 			},
-			...(props.queryOptions ?? {}),
-			fresh: force
+			...(props.queryOptions ?? {})
+			//fresh: force
 		});
 
-		return result
+		return result;
 	}
 	let timer: number;
 	$effect(() => {
 		console.log('rerun eff', props.deps());
+		console.log(props.name);
 		if (props.deps()) {
-			const k = stringify(props.deps());
 			untrack(() => {
-				const hash = stringify(props.deps());
-				const has = depsHistory.has(hash);
-				console.log('deps updated', has);
-				if (!has) {
+				//const hash = stringify(props.deps());
+				//const has = depsHistory.has(hash);
+				//console.log('deps updated', has);
+				clearTimeout(timer);
+				/* if (!has) {
 					console.log('a new fetch', hash, Array.from(depsHistory), has);
 					//  a new query
 					timer = setTimeout(() => {
@@ -270,51 +274,57 @@ export function createQuery<TData, TError, TDeps, TMerged, TFinal>(props: {
 						result.isSuccess = false;
 					}, 200);
 					depsHistory.add(hash);
-					30;
-				}
-				get(!has);
+				} */
+				timer = setTimeout(() => {
+					// if we fetch result in 200ms then do not show spinner
+					result.isLoading = true;
+					result.isSuccess = false;
+				}, 200);
+				get();
 			});
 		}
 	});
 	$effect.root(() => {
 		const unsub: Function[] = [];
 		unsub.push(
-			instance.subscribe(props.cacheKey, 'resolved', function (payload: CustomEvent) {
+			queryInstance.subscribe(props.cacheKey, 'resolved', function (payload: CustomEvent) {
 				result['isError'] = false;
-				const val=props.pickFn({
+				console.log('resolved query', payload.detail, originalResponse.keys());
+				const res = getResponseHistory();
+				const val = props.pickFn({
 					Cached: cacheFactory.get(props.cacheKey),
-					originalResponse: originalResponse.get(props.deps()),
+					originalResponse: res,
 					ids: ids
-				})
+				});
 				result.data = val;
 				result.isRefetching = false;
 				result.error = undefined;
 				result.isAborted = false;
 				result.isLoading = false;
 				result.isSuccess = true;
-				console.log('resolved', JSON.stringify(val,null));
+				console.log('resolved  merged data ', JSON.stringify(val, null));
 				props.onSuccess?.({
 					picked: val,
-					originalResponse: originalResponse.get(props.deps()),
+					originalResponse: res,
 					cache: cacheFactory.get(props.cacheKey)
 				});
-				endHook({ data: payload.detail });
+				endHook?.({ data: payload.detail });
 			})
 		);
 		unsub.push(
-			instance.subscribe(props.cacheKey, 'aborted', function (payload: CustomEvent) {
+			queryInstance.subscribe(props.cacheKey, 'aborted', function (payload: CustomEvent) {
 				result.isAborted = true;
 				//	result.data = payload;
 			})
 		);
 		unsub.push(
-			instance.subscribe(props.cacheKey, 'refetching', function (payload) {
+			queryInstance.subscribe(props.cacheKey, 'refetching', function (payload) {
 				result.isRefetching = true; //expired or deps changed
 				console.log('refetching', payload);
 			})
 		);
 		unsub.push(
-			instance.subscribe(props.cacheKey, 'error', function (payload: CustomEvent) {
+			queryInstance.subscribe(props.cacheKey, 'error', function (payload: CustomEvent) {
 				result.isError = true;
 				result.error = payload.detail;
 				props.onError?.(payload.detail);
@@ -322,7 +332,7 @@ export function createQuery<TData, TError, TDeps, TMerged, TFinal>(props: {
 			})
 		);
 		unsub.push(
-			instance.subscribe(props.cacheKey, 'forgotten', function (payload) {
+			queryInstance.subscribe(props.cacheKey, 'forgotten', function (payload) {
 				//expired
 				console.log('cache invalidated', payload);
 				get(true);
@@ -330,19 +340,17 @@ export function createQuery<TData, TError, TDeps, TMerged, TFinal>(props: {
 		);
 		return () => {
 			console.log('cleanup');
-			instance.abort();
+			queryInstance.abort();
 			unsub.forEach((v) => v());
-			/* instance[COUNT] -= 1;
-			if (instance[COUNT] === 0) {
-				depsFactory[props.cacheKey] = new Set();
-			} */
-			// try to abort
-			//result = {}; // release memory
+
+			const meta = instanceQueriesMetaStore.get(props.cacheKey) ?? { count: [] };
+			meta.count.push(-1);
+			instanceQueriesMetaStore.set(props.cacheKey, meta);
 		};
 	});
 
 	const res = $derived({
-		...result,
+		...result
 		//data: cacheFactory.get(props.cacheKey)?.item as TFinal
 	});
 	/* $effect(() => {
@@ -350,5 +358,5 @@ export function createQuery<TData, TError, TDeps, TMerged, TFinal>(props: {
 	}); */
 
 	//$inspect('inspecting', res).with(console.log);
-	return () => res;
+	return () => result;
 }

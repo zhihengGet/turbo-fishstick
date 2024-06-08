@@ -1,9 +1,8 @@
 <script lang="ts">
 	import { createTurboQuery } from 'turbo-query';
-	import { createQuery, type normalized } from './handler.svelte';
+	import { createQuery, type normalized } from '$lib/index';
 	import Test from './test.svelte';
 	import DevTool from './DevTool.svelte';
-	import { pickBy } from 'remeda';
 	// Create the configuration object.
 	const options = {
 		// Example isomorphic fetcher, requires node 17.5+.
@@ -12,7 +11,7 @@
 			return [1, 2];
 		}
 	};
-	// Create the Turbo Query instsance.
+	// Create the Turbo Query instance.
 	const instance = createTurboQuery({
 		async fetcher(key, { signal }) {
 			console.log('fetching ', key);
@@ -32,29 +31,11 @@
 		}
 	});
 
-	const instance1 = createTurboQuery({
-		async fetcher(key, { signal }) {
-			console.log('fetching ', key);
-			return [1];
-		},
-		itemsCache: {
-			get: (payload) => {
-				console.log('GET', payload);
-				return { expiresAt: new Date(), item: [1] };
-			},
-			set: (key, value) => {
-				console.log('Set', value);
-			},
-			keys: () => {
-				return ['1'];
-			}
-		},
-		stale: 1000
-	});
+	
 	const args = $state({ a: 1 });
 	const query = createQuery({
 		cacheKey: 'blogs',
-		deps: () => args.a,
+		deps: () => { const b={...args}; return b},
 		fetcher: async (props) => {
 			console.log('calling fetcher');
 			const res = await fetch('https://jsonplaceholder.typicode.com/todos/1');
@@ -63,7 +44,7 @@
 				resolve([1]);
 			}, 500);
 			await promise;
-			return [{ id: crypto.randomUUID(), content: '' }] as const;
+			return [{ id: crypto.randomUUID(), content: '',type:props }] as const;
 		},
 		mergeFn: ({
 			Cached,
@@ -85,6 +66,7 @@
 			return Cached.item as normalized<string,[123]>
 		},
 		pickFn: ({ Cached, originalResponse }) => {
+			console.log("calling page pickFn",originalResponse)
 			const ids=originalResponse.map(v=>v.id)
 			const item = Cached.item;
 			const v= ids.map(v=>item.value[v])
@@ -116,6 +98,10 @@
 </script>
 
 <h2>turbo query</h2>
+
+{#if query().isLoading}
+	<span>waiting...</span>
+{/if}
 <pre>
 	{JSON.stringify(query(), null, 2)}
 </pre>

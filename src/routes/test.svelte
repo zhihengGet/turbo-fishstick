@@ -1,8 +1,11 @@
 <script lang="ts">
 	import { createQuery, type normalized } from './handler.svelte';
+
+	console.log("loading test")
 	const args = $state({ a: 1 });
 	const query = createQuery({
 		cacheKey: 'blogs',
+		name: "test svelte",
 		deps: () => args.a,
 		fetcher: async (props) => {
 			console.log('calling fetcher');
@@ -12,7 +15,7 @@
 				resolve([1]);
 			}, 500);
 			await promise;
-			return [{ id: crypto.randomUUID(), content: '' }] as const;
+			return [{ id: crypto.randomUUID(), content: 'tester' }] as const;
 		},
 		mergeFn: ({
 			Cached,
@@ -33,21 +36,20 @@
 			}) 
 			return Cached.item as normalized<string,[123]>
 		},
-		pickFn: ({ Cached, originalResponse }) => {		
-			console.log("pickFn",originalResponse)
+		pickFn: ({ Cached, originalResponse }) => {
 			const ids=originalResponse.map(v=>v.id)
 			const item = Cached.item;
 			const v= ids.map(v=>item.value[v])
-	
 			return v
 		},
-		queryOptions: { expiration: () => 500 }
+		queryOptions: { expiration: () => 50000 }
 	});
+
 	// Get the resolver keys.
 	let open = $state(false);
 </script>
 
-<h2>Test</h2>
+<h2>TEST</h2>
 <pre>
 	{JSON.stringify(query(), null, 2)}
 </pre>
@@ -56,6 +58,10 @@
 	onclick={() => {
 		args.a += 1;
 	}}>update deps {args.a}</button
+><button
+	onclick={() => {
+		args.a -= 1;
+	}}>revert update deps {args.a}</button
 >
 <button
 	onclick={() => {
@@ -66,3 +72,10 @@
 >
 	Mutate Cache
 </button>
+
+<button
+	onclick={() => {
+		open = !open;
+		console.log('clicked', open);
+	}}>dialog open {open}</button
+>
