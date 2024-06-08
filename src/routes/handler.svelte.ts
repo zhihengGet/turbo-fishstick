@@ -249,8 +249,8 @@ export function createQuery<TData, TError, TDeps, TMerged, TFinal>(props: {
 				}
 				return res;
 			},
-			...(props.queryOptions ?? {})
-			//fresh: force
+			...(props.queryOptions ?? {}),
+			fresh: force
 		});
 
 		return result;
@@ -261,11 +261,11 @@ export function createQuery<TData, TError, TDeps, TMerged, TFinal>(props: {
 		console.log(props.name);
 		if (props.deps()) {
 			untrack(() => {
-				//const hash = stringify(props.deps());
-				//const has = depsHistory.has(hash);
-				//console.log('deps updated', has);
+				const hash = stringify(props.deps());
+				const has = depsHistory.has(hash);
+				console.log('deps updated', has);
 				clearTimeout(timer);
-				/* if (!has) {
+				if (!has) {
 					console.log('a new fetch', hash, Array.from(depsHistory), has);
 					//  a new query
 					timer = setTimeout(() => {
@@ -274,13 +274,8 @@ export function createQuery<TData, TError, TDeps, TMerged, TFinal>(props: {
 						result.isSuccess = false;
 					}, 200);
 					depsHistory.add(hash);
-				} */
-				timer = setTimeout(() => {
-					// if we fetch result in 200ms then do not show spinner
-					result.isLoading = true;
-					result.isSuccess = false;
-				}, 200);
-				get();
+				}
+				get(!has);
 			});
 		}
 	});
