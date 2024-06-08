@@ -130,6 +130,7 @@ export function createQuery<TData, TError extends Error, TDeps, TMerged, TFinal>
 	onError?: (err: TError) => void;
 	queryOptions?: TurboQueryOptions;
 	initialData?: TData;
+	syncTabs?: boolean;
 }) {
 	/* 	const cacheFactory = getQueryCacheContext();
 	const depsFactory = getQueryDepsStoreContext();
@@ -215,7 +216,7 @@ export function createQuery<TData, TError extends Error, TDeps, TMerged, TFinal>
 					merge(cache.item, temp);
 					cacheFactory.set(key, cache);
 				}
-				notify();
+				if (props.syncTabs) notify();
 				console.timeEnd('Set cache');
 			},
 			keys() {
