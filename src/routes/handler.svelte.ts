@@ -168,6 +168,7 @@ export function createQuery<TData, TError, TDeps, TMerged, TFinal>(props: {
 				console.log('GET originalResponse', JSON.stringify(result.data));
 				clearTimer();
 				result.isLoading = false;
+				result.isSuccess = true;
 				return old_cache;
 			},
 			set(key, value) {
@@ -283,7 +284,7 @@ export function createQuery<TData, TError, TDeps, TMerged, TFinal>(props: {
 				}
 				result.isLoading = true;
 				result.isSuccess = false;
-				get();
+				get(!has);
 			});
 		}
 	});
@@ -331,6 +332,7 @@ export function createQuery<TData, TError, TDeps, TMerged, TFinal>(props: {
 			queryInstance.subscribe(props.cacheKey, 'error', function (payload: CustomEvent) {
 				result.isError = true;
 				result.error = payload.detail;
+				result.isSuccess = false;
 				props.onError?.(payload.detail);
 				endHook({ error: payload.detail });
 			})
