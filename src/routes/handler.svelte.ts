@@ -47,7 +47,7 @@ export const getQueryContext = <TMerged, Deps, TData, TDeps>() => {
 		depsFactory: { [s in string]: Set<string> };
 		//instanceFactory: Map<string, TurboQuery>;
 		//	instanceQueries: Map<TurboQuery, [typeof props]>;
-		instanceQueriesMetaStore: Map<string, { count: number[] }>;
+		instanceQueriesMetaStore: Map<string, { count: number[]; names: Set<string> }>;
 		endHook: (props: { error?: Error; data?: TData }) => void;
 		originalResponseStore: Map<string, Map<TDeps, TData>>;
 	};
@@ -207,7 +207,7 @@ export function createQuery<TData, TError, TDeps, TMerged, TFinal>(props: {
 	let originalResponse = temp_orig ?? new Map();
 	if (!temp_orig) originalResponseStore.set(props.cacheKey, originalResponse);
 	// increment count
-	const meta = instanceQueriesMetaStore.get(props.cacheKey) ?? { count: [] };
+	const meta = instanceQueriesMetaStore.get(props.cacheKey) ?? { count: [], names: new Set() };
 	meta.count.push(1); // avoid race condition with push instead of inc
 	instanceQueriesMetaStore.set(props.cacheKey, meta);
 
