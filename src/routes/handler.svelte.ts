@@ -39,7 +39,7 @@ export const setQueryContext = () => {
 		//instanceQueries: new Map(),
 		originalResponseStore: new Map(),
 		endHook: () => console.log('query ended'),
-		instanceQueriesMetaStore: new Map()
+		instanceQueriesMetaStore: new ReactiveMap()
 	});
 };
 export const getQueryContext = <TMerged, Deps, TData, TDeps>() => {
@@ -48,7 +48,10 @@ export const getQueryContext = <TMerged, Deps, TData, TDeps>() => {
 		depsFactory: { [s in string]: Set<string> };
 		//instanceFactory: Map<string, TurboQuery>;
 		//	instanceQueries: Map<TurboQuery, [typeof props]>;
-		instanceQueriesMetaStore: Map<string, { count: number[]; names: Set<string> }>;
+		instanceQueriesMetaStore: Map<
+			string,
+			{ count: number[]; names: Set<string>; queries: Map<any, { expirationDate: Date | number }> }
+		>;
 		endHook: (props: { error?: Error; data?: TData }) => void;
 		originalResponseStore: Map<string, Map<TDeps, TData>>;
 	};
@@ -141,10 +144,10 @@ export function createQuery<TData, TError extends Error, TDeps, TMerged, TFinal>
 		depsFactory[props.cacheKey] = new Set();
 	}
 	let depsHistory = depsFactory[props.cacheKey];
-
+	let expirationStack = new Map();
 	let ids: string[] = [];
 	let hash: string = $derived(stringify(props.deps()));
-
+	let curr_date = Date.now();
 	async function notify() {
 		if (browser) {
 			console.log('notifying other tab about the change', sessionStorage?.getItem('tabId'));
@@ -170,6 +173,7 @@ export function createQuery<TData, TError extends Error, TDeps, TMerged, TFinal>
 				if (!old_cache) {
 					return;
 				}
+
 				if (old_cache.expiresAt.getTime() <= Date.now()) {
 					console.log('Get Item from cached But expired');
 				}
@@ -194,6 +198,9 @@ export function createQuery<TData, TError extends Error, TDeps, TMerged, TFinal>
 				clearTimer();
 				result.isLoading = false;
 				result.isSuccess = true;
+				let time = expirationStack.get(hash);
+				console.log('expiration for this query ', time, hash.substring(0, 10));
+				if (time) old_cache.expiresAt = new Date(curr_date + time);
 				return old_cache;
 			},
 			set(key, value) {
@@ -232,10 +239,24 @@ export function createQuery<TData, TError extends Error, TDeps, TMerged, TFinal>
 	let originalResponse = temp_orig ?? new Map();
 	if (!temp_orig) originalResponseStore.set(props.cacheKey, originalResponse);
 	// increment count
-	const meta = instanceQueriesMetaStore.get(props.cacheKey) ?? { count: [], names: new Set() };
+	const meta = instanceQueriesMetaStore.get(props.cacheKey) ?? {
+		count: [],
+		names: new Set(),
+		queries: new ReactiveMap()
+	};
 	meta.count.push(1); // avoid race condition with push instead of inc
-	instanceQueriesMetaStore.set(props.cacheKey, meta);
 
+	instanceQueriesMetaStore.set(props.cacheKey, meta);
+	$effect(() => {
+		if (hash) {
+			//console.log('hash updated', props.name + hash);
+			meta.queries.set(props.name + ' ' + hash, {
+				// show one expiration date for all deps changes
+				expirationDate: props.queryOptions?.expiration?.(null) ?? 0
+			});
+			instanceQueriesMetaStore.set(props.cacheKey, meta);
+		}
+	});
 	function getResponseHistory() {
 		return originalResponse.get(stringify(props.deps()));
 	}
@@ -310,6 +331,7 @@ export function createQuery<TData, TError extends Error, TDeps, TMerged, TFinal>
 		console.log(props.name);
 		if (props.deps() && hash) {
 			untrack(() => {
+				expirationStack.set(hash, Date.now() + (props.queryOptions?.expiration?.() ?? 0));
 				clearTimer();
 				const has = depsHistory.has(hash);
 				console.log('deps updated', has);
@@ -436,3 +458,21 @@ export function MergeService() {
 		);
 	});
 }
+
+export type QueryFunction<TData, TError extends Error, TDeps, TMerged, TFinal> = typeof createQuery<
+	TData,
+	TError,
+	TDeps,
+	TMerged,
+	TFinal
+>;
+
+export type QueryParams<TData, TError extends Error, TDeps, TMerged, TFinal> = Parameters<
+	QueryFunction<TData, TError, TDeps, TMerged, TFinal>
+>[0];
+export type QueryReturn<TData, TError extends Error, TDeps, TMerged, TFinal> = ReturnType<
+	QueryFunction<TData, TError, TDeps, TMerged, TFinal>
+>;
+export type QueryReturnValue<TData, TError extends Error, TDeps, TMerged, TFinal> = ReturnType<
+	QueryReturn<TData, TError, TDeps, TMerged, TFinal>
+>;

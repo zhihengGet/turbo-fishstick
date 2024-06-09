@@ -5,6 +5,8 @@
 	import { generate_HTML } from 'json-in-details';
 	import 'json-in-details/styles.css';
 	import './bigjson.css';
+	import { get } from 'svelte/store';
+	import { keys } from 'remeda';
 	//import { sum } from 'remeda';
 
 	const { cacheFactory, depsFactory, instanceQueriesMetaStore } = getQueryContext();
@@ -89,6 +91,20 @@
 			</div>
 		</div>
 		<span>Expire in {(c?.expiresAt.getTime() ?? 0) - Date.now()} milliseconds</span>
+		<h4>Queries for {cache}</h4>
+		<details style="margin-left: 2em;background-color:antiquewhite">
+			<summary>Show Queries {instanceQueriesMetaStore.get(cache)?.queries?.size ?? 0}</summary>
+			{#each instanceQueriesMetaStore.get(cache)?.queries?.keys?.() ?? [] as meta}
+				{@const info = instanceQueriesMetaStore.get(cache)?.queries}
+				<div>
+					<div>Id: {meta}</div>
+					<div>
+						Expiration {instanceQueriesMetaStore.get(cache)?.queries.get(meta)?.expirationDate}ms
+					</div>
+				</div>
+			{/each}
+		</details>
+
 		<button onclick={() => {}}>Show Queries</button>
 		<!-- {#if depsFactory[cache]}
     		{depsFactory[cache].keys()}
