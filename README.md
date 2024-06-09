@@ -4,6 +4,9 @@ based on turbo-query
 
 ```shell
 npm install svelte-query-custom
+pnpm install svelte-query-custom
+yarn install svelte-query-custom
+bun install svelte-query-custom
 ```
 
 ```javascript
