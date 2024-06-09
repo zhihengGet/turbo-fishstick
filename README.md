@@ -70,13 +70,16 @@ based on turbo-query
 - refetch
 - devTools
 
+## caveat
+
+- each cacheKey can only have one expiresAt even if you specify different expiresAt for different queries only the first one will be used
+
+- how do we handle pagination optimisitc update ? i.e we have a list of blogs paginated, if we updated db and one blog needs to be removed from page 2, what do we do with subsequent pages ? we have to do refetch or we can do client-side pagination based on cache ?
+
 # arch
 
 cache store is based on cache key
 each cache key can have multiple queries
 each queries can be run with different dependencies
-each query can be used in different component simultaneously
-
-## caveat
-
-- each cacheKey can only have one expiresAt even if you specify different expiresAt for different queries only the first one will be used
+each query can be used in different component simultaneousl
+![alt text](image.png)

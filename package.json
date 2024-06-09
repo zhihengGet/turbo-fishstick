@@ -1,6 +1,6 @@
 {
 	"name": "svelte-query-custom",
-	"version": "0.0.1-beta.4.9",
+	"version": "0.0.1-beta.4.10",
 	"private": false,
 	"scripts": {
 		"dev": "vite dev --port 3006",
