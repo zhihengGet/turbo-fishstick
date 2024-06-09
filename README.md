@@ -1,5 +1,7 @@
 based on turbo-query (turbo)https://github.com/StudioLambda/TurboQuery
 
+# this is experimental query library for svelte 5 runes that allows you to customie how cache is stored
+
 # Quick Start
 
 ```shell
