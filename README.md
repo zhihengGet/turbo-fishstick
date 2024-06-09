@@ -2,6 +2,10 @@ based on turbo-query
 
 # Quick Start
 
+```shell
+npm install svelte-query-custom
+```
+
 ```javascript
 // layout.svelte
 // you can use  QuiteClient or setQueryContext to set cache stores
@@ -70,7 +74,7 @@ based on turbo-query
 - refetch
 - devTools
 
-## caveat
+## caveat/issues
 
 - each cacheKey can only have one expiresAt even if you specify different expiresAt for different queries only the first one will be used
 
