@@ -1,4 +1,4 @@
-based on turbo-query
+based on turbo-query (turbo)https://github.com/StudioLambda/TurboQuery
 
 # Quick Start
 
@@ -12,6 +12,9 @@ bun install svelte-query-custom
 ```javascript
 // layout.svelte
 // you can use  QuiteClient or setQueryContext to set cache stores
+import {QueryClient} from "svelte-query-custom"
+import DevTool from 'svelte-query-custom/DevTool.svelte';
+import {createQuery} from 'svelte-query-custom';
 
 <QueryClient>
 	<DevTool />
@@ -78,6 +81,8 @@ bun install svelte-query-custom
 - devTools
 
 ## caveat/issues
+
+- explore [normalizr](https://github.com/paularmstrong/normalizr)
 
 - each cacheKey can only have one expiresAt even if you specify different expiresAt for different queries only the first one will be used
 
